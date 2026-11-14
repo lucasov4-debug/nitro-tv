@@ -21,29 +21,8 @@ import android.widget.Toast;
 import java.util.List;
 
 public class TurboActivity extends Activity {
-    private Bar bar;
+    private Ui.Bar bar;
     private TextView info, result;
-
-    private static final class Bar extends View {
-        float frac;
-        final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final RectF r = new RectF();
-
-        Bar(Context c) {
-            super(c);
-        }
-
-        @Override
-        protected void onDraw(Canvas c) {
-            float h = getHeight(), w = getWidth(), rad = h / 2f;
-            p.setColor(0xFF1B2447);
-            r.set(0, 0, w, h);
-            c.drawRoundRect(r, rad, rad, p);
-            p.setColor(frac < 0.6f ? 0xFF2ED47A : frac < 0.8f ? 0xFFFFB020 : 0xFFFF4D4D);
-            r.set(0, 0, Math.max(h, w * frac), h);
-            c.drawRoundRect(r, rad, rad, p);
-        }
-    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -62,7 +41,7 @@ public class TurboActivity extends Activity {
         ip.topMargin = Ui.dp(this, 32);
         col.addView(info, ip);
 
-        bar = new Bar(this);
+        bar = new Ui.Bar(this);
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 18));
         bp.topMargin = Ui.dp(this, 12);
         col.addView(bar, bp);
@@ -71,15 +50,15 @@ public class TurboActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setClipChildren(false);
         row.setPadding(0, Ui.dp(this, 32), 0, Ui.dp(this, 14));
-        row.addView(Ui.tile(this, "Liberar memória", 0xFFFF6A00, null, false, 190, 108, new View.OnClickListener() {
+        row.addView(Ui.tile(this, "Liberar memória", Ui.AMBER, null, false, 190, 108, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 free();
             }
         }));
-        row.addView(Ui.tile(this, "Gerenciar apps", 0xFF2A3566, null, false, 190, 108, go(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)));
-        row.addView(Ui.tile(this, "Opções do desenvolvedor", 0xFF2A3566, null, false, 190, 108, go(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)));
-        row.addView(Ui.tile(this, "Armazenamento", 0xFF2A3566, null, false, 190, 108, go(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)));
+        row.addView(Ui.tile(this, "Gerenciar apps", Ui.SURFACE2, null, false, 190, 108, go(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)));
+        row.addView(Ui.tile(this, "Opções do desenvolvedor", Ui.SURFACE2, null, false, 190, 108, go(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)));
+        row.addView(Ui.tile(this, "Armazenamento", Ui.SURFACE2, null, false, 190, 108, go(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)));
         col.addView(row);
 
         result = Ui.text(this, "Dica: em Opções do desenvolvedor, deixe as 3 escalas de animação em 0,5x ou desligadas.", 14, 0xFF9FB0E0, false, Gravity.START);

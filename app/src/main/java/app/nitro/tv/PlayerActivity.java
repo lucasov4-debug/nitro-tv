@@ -66,7 +66,7 @@ public class PlayerActivity extends Activity {
 
         osd = Ui.text(this, "", 22, 0xFFFFFFFF, true, Gravity.CENTER_VERTICAL);
         GradientDrawable g = new GradientDrawable();
-        g.setColor(0xCC0B1020);
+        g.setColor(0xE6151C3A);
         g.setCornerRadius(Ui.dp(this, 12));
         osd.setBackground(g);
         osd.setPadding(Ui.dp(this, 20), Ui.dp(this, 12), Ui.dp(this, 20), Ui.dp(this, 12));

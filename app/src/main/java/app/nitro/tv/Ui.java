@@ -1,7 +1,10 @@
 package app.nitro.tv;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -20,16 +23,37 @@ import android.widget.TextView;
 final class Ui {
     private Ui() {}
 
+    // Paleta "sala à noite": azul-tinta profundo, luz de abajur âmbar no foco.
+    static final int BG = 0xFF0A0F24;
+    static final int SURFACE = 0xFF151C3A;
+    static final int SURFACE2 = 0xFF222B57;
+    static final int TEXT = 0xFFF4F1FF;
+    static final int MUTED = 0xFF8E98C4;
+    static final int AMBER = 0xFFFFB43B;
+    static final int LIVE = 0xFFFF4D5E;
+    static final int PANEL = 0xFFEEF0FA;
+
     static int dp(Context c, float v) {
         return Math.round(v * c.getResources().getDisplayMetrics().density);
     }
 
-    /** Fundo do tile: cor sólida + anel branco quando focado. */
+    static Typeface medium() {
+        return Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    }
+
+    static Typeface black() {
+        return Typeface.create("sans-serif-black", Typeface.NORMAL);
+    }
+
+    static Typeface light() {
+        return Typeface.create("sans-serif-light", Typeface.NORMAL);
+    }
+
     static Drawable tileBg(Context c, int fill, float radiusPx) {
         GradientDrawable on = new GradientDrawable();
         on.setColor(fill);
         on.setCornerRadius(radiusPx);
-        on.setStroke(dp(c, 4), 0xFFFFFFFF);
+        on.setStroke(dp(c, 4), AMBER);
         GradientDrawable off = new GradientDrawable();
         off.setColor(fill);
         off.setCornerRadius(radiusPx);
@@ -49,12 +73,11 @@ final class Ui {
         v.setClipToOutline(true);
     }
 
-    /** Foco leve: só escala + elevação (barato para GPUs fracas). */
     static final View.OnFocusChangeListener FOCUS = new View.OnFocusChangeListener() {
         @Override
         public void onFocusChange(View v, boolean has) {
-            float s = has ? 1.08f : 1f;
-            v.animate().scaleX(s).scaleY(s).translationZ(has ? 24f : 0f).setDuration(110).start();
+            float s = has ? 1.07f : 1f;
+            v.animate().scaleX(s).scaleY(s).translationZ(has ? 24f : 0f).setDuration(120).start();
         }
     };
 
@@ -64,27 +87,27 @@ final class Ui {
         t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
         t.setTextColor(color);
         t.setGravity(gravity);
-        t.setTypeface(bold ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        t.setTypeface(bold ? medium() : Typeface.DEFAULT);
         t.setIncludeFontPadding(false);
         return t;
     }
 
-    /** Tile base focável (para uso dentro de LinearLayout horizontal). */
+    /** Tile focável. A cor vai também em setTag: o fundo da home brilha nessa cor quando focado. */
     static FrameLayout base(Context c, int color, int wDp, int hDp, View.OnClickListener click) {
         FrameLayout f = new FrameLayout(c);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(c, wDp), dp(c, hDp));
         lp.rightMargin = dp(c, 16);
         f.setLayoutParams(lp);
-        float r = dp(c, 12);
+        float r = dp(c, 16);
         f.setBackground(tileBg(c, color, r));
         roundClip(f, r);
         f.setFocusable(true);
+        f.setTag(Integer.valueOf(color));
         if (click != null) f.setOnClickListener(click);
         f.setOnFocusChangeListener(FOCUS);
         return f;
     }
 
-    /** Tile de app: banner cheio, ou ícone + rótulo, ou só rótulo. */
     static FrameLayout tile(Context c, String label, int color, Drawable img, boolean banner,
                             int wDp, int hDp, View.OnClickListener click) {
         FrameLayout f = base(c, color, wDp, hDp, click);
@@ -100,20 +123,42 @@ final class Ui {
             iv.setImageDrawable(img);
             int s = dp(c, Math.min(wDp, hDp) * 0.42f);
             FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(s, s, Gravity.CENTER_HORIZONTAL | Gravity.TOP);
-            ip.topMargin = dp(c, hDp * 0.14f);
+            ip.topMargin = dp(c, hDp * 0.13f);
             f.addView(iv, ip);
-            TextView t = text(c, label, 12, 0xFFFFFFFF, true, Gravity.CENTER);
+            TextView t = text(c, label, 13, TEXT, true, Gravity.CENTER);
             t.setSingleLine(true);
             t.setEllipsize(TextUtils.TruncateAt.END);
-            t.setPadding(dp(c, 6), 0, dp(c, 6), dp(c, 8));
+            t.setPadding(dp(c, 8), 0, dp(c, 8), dp(c, 10));
             f.addView(t, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
         } else {
-            TextView t = text(c, label, 16, 0xFFFFFFFF, true, Gravity.CENTER);
+            TextView t = text(c, label, 17, TEXT, true, Gravity.CENTER);
             t.setMaxLines(3);
             t.setEllipsize(TextUtils.TruncateAt.END);
-            t.setPadding(dp(c, 10), dp(c, 6), dp(c, 10), dp(c, 6));
+            t.setPadding(dp(c, 12), dp(c, 6), dp(c, 12), dp(c, 6));
             f.addView(t, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
         return f;
+    }
+
+    /** Barra de memória: verde, âmbar ou vermelho conforme o uso. */
+    static final class Bar extends View {
+        float frac;
+        final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final RectF r = new RectF();
+
+        Bar(Context c) {
+            super(c);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            float h = getHeight(), w = getWidth(), rad = h / 2f;
+            p.setColor(0xFF2A3566);
+            r.set(0, 0, w, h);
+            c.drawRoundRect(r, rad, rad, p);
+            p.setColor(frac < 0.6f ? 0xFF2ED47A : frac < 0.8f ? AMBER : LIVE);
+            r.set(0, 0, Math.max(h, w * frac), h);
+            c.drawRoundRect(r, rad, rad, p);
+        }
     }
 }

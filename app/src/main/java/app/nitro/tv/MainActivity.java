@@ -1,5 +1,7 @@
 package app.nitro.tv;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
@@ -8,7 +10,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -21,14 +23,17 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextClock;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -62,8 +67,8 @@ public class MainActivity extends Activity {
     };
 
     private static final int[] PALETTE = {
-            0xFF1F3C88, 0xFF7A1F5C, 0xFF14705F, 0xFF8A4B14,
-            0xFF3B2A8C, 0xFF8C2A2A, 0xFF1F6A8C, 0xFF4B6B14
+            0xFF3C5BD8, 0xFFB0398A, 0xFF1E9C84, 0xFFD2761F,
+            0xFF6A4FE0, 0xFFD24A4A, 0xFF2D8FC0, 0xFF6E9A22
     };
 
     private static final class Sec {
@@ -73,15 +78,19 @@ public class MainActivity extends Activity {
 
         void show(boolean v) {
             int vis = v ? View.VISIBLE : View.GONE;
-            head.setVisibility(vis);
+            if (head != null) head.setVisibility(vis);
             scroll.setVisibility(vis);
         }
     }
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private ScrollView sv;
-    private TextView ram;
-    private Sec secStream, secTv, secApps, secOther, secSys;
+    private GradientDrawable glowBg;
+    private int glowColor = 0xFF3C5BD8;
+    private ValueAnimator glowAnim;
+    private TextView greeting, memPct;
+    private Ui.Bar memBar;
+    private Sec secHero, secStream, secTv, secApps, secOther, secSys;
     private List<Apps.App> apps;
     private boolean scanning;
     private SharedPreferences prefs;
@@ -129,6 +138,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         updateRam();
+        int h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        greeting.setText(h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite");
     }
 
     @Override
@@ -141,6 +152,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         ui.removeCallbacksAndMessages(null);
+        if (glowAnim != null) glowAnim.cancel();
         try {
             unregisterReceiver(pkgRx);
         } catch (Throwable ignored) {
@@ -150,23 +162,36 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // launcher: Back não sai da home
+        // launcher: Voltar não sai da home
     }
 
     // ---------------------------------------------------------------- UI
 
     private void buildUi() {
+        FrameLayout root = new FrameLayout(this);
+
+        // brilho ambiente: acompanha a cor do tile focado
+        View glow = new View(this);
+        glowBg = new GradientDrawable();
+        glowBg.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        glowBg.setGradientRadius(Ui.dp(this, 820));
+        glowBg.setGradientCenter(0.18f, 0.05f);
+        glowBg.setColors(new int[]{glowTint(glowColor), 0x00000000});
+        glow.setBackground(glowBg);
+        root.addView(glow, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         sv = new ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
         sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
         sv.setClipChildren(false);
         sv.setClipToPadding(false);
+        root.addView(sv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setClipChildren(false);
         col.setClipToPadding(false);
-        col.setPadding(Ui.dp(this, 56), Ui.dp(this, 28), Ui.dp(this, 56), Ui.dp(this, 40));
+        col.setPadding(Ui.dp(this, 56), Ui.dp(this, 26), Ui.dp(this, 56), Ui.dp(this, 44));
         sv.addView(col, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // cabeçalho
@@ -174,17 +199,19 @@ public class MainActivity extends Activity {
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
 
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
         SpannableStringBuilder logo = new SpannableStringBuilder("nitro.");
-        logo.setSpan(new ForegroundColorSpan(0xFF4C8DFF), 5, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        TextView logoTv = Ui.text(this, "", 30, 0xFFFFFFFF, true, Gravity.START);
+        logo.setSpan(new ForegroundColorSpan(Ui.AMBER), 5, 6, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        TextView logoTv = Ui.text(this, "", 34, Ui.TEXT, false, Gravity.START);
+        logoTv.setTypeface(Ui.black());
         logoTv.setText(logo);
-        logoTv.setLetterSpacing(0.04f);
-        head.addView(logoTv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        ram = Ui.text(this, "", 14, 0xFF9FB0E0, false, Gravity.END);
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rp.rightMargin = Ui.dp(this, 28);
-        head.addView(ram, rp);
+        left.addView(logoTv);
+        greeting = Ui.text(this, "", 16, Ui.MUTED, false, Gravity.START);
+        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gp.topMargin = Ui.dp(this, 6);
+        left.addView(greeting, gp);
+        head.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         LinearLayout clockBox = new LinearLayout(this);
         clockBox.setOrientation(LinearLayout.VERTICAL);
@@ -192,22 +219,23 @@ public class MainActivity extends Activity {
         TextClock time = new TextClock(this);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
-        time.setTextColor(0xFFFFFFFF);
-        time.setTypeface(Typeface.DEFAULT_BOLD);
+        time.setTextSize(TypedValue.COMPLEX_UNIT_SP, 44);
+        time.setTextColor(Ui.TEXT);
+        time.setTypeface(Ui.light());
         time.setGravity(Gravity.END);
         time.setIncludeFontPadding(false);
         TextClock date = new TextClock(this);
-        date.setFormat24Hour("EEE, d 'de' MMM");
-        date.setFormat12Hour("EEE, d 'de' MMM");
-        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        date.setTextColor(0xFF9FB0E0);
+        date.setFormat24Hour("EEEE, d 'de' MMMM");
+        date.setFormat12Hour("EEEE, d 'de' MMMM");
+        date.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        date.setTextColor(Ui.MUTED);
         date.setGravity(Gravity.END);
         clockBox.addView(time);
         clockBox.addView(date);
         head.addView(clockBox);
         col.addView(head);
 
+        secHero = sec(col, null);
         secStream = sec(col, "Streaming");
         secTv = sec(col, "TV aberta");
         secApps = sec(col, "Apps");
@@ -217,17 +245,44 @@ public class MainActivity extends Activity {
         secOther.show(false);
         secApps.show(false);
 
-        setContentView(sv);
+        setContentView(root);
+
+        sv.getViewTreeObserver().addOnGlobalFocusChangeListener(new ViewTreeObserver.OnGlobalFocusChangeListener() {
+            @Override
+            public void onGlobalFocusChanged(View oldFocus, View newFocus) {
+                if (newFocus != null && newFocus.getTag() instanceof Integer) setGlow((Integer) newFocus.getTag());
+            }
+        });
+    }
+
+    private static int glowTint(int c) {
+        return (c & 0x00FFFFFF) | 0x66000000;
+    }
+
+    private void setGlow(int to) {
+        if (to == glowColor) return;
+        if (glowAnim != null) glowAnim.cancel();
+        glowAnim = ValueAnimator.ofObject(new ArgbEvaluator(), glowColor, to);
+        glowAnim.setDuration(380);
+        glowAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator a) {
+                glowColor = (Integer) a.getAnimatedValue();
+                glowBg.setColors(new int[]{glowTint(glowColor), 0x00000000});
+            }
+        });
+        glowAnim.start();
     }
 
     private Sec sec(LinearLayout col, String title) {
         Sec s = new Sec();
-        s.head = Ui.text(this, title.toUpperCase(), 14, 0xFF9FB0E0, true, Gravity.START);
-        s.head.setLetterSpacing(0.14f);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = Ui.dp(this, 22);
-        col.addView(s.head, hp);
-
+        if (title != null) {
+            s.head = Ui.text(this, title, 18, Ui.MUTED, true, Gravity.START);
+            LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hp.topMargin = Ui.dp(this, 20);
+            hp.leftMargin = Ui.dp(this, 6);
+            col.addView(s.head, hp);
+        }
         s.scroll = new HorizontalScrollView(this);
         s.scroll.setHorizontalScrollBarEnabled(false);
         s.scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -237,7 +292,7 @@ public class MainActivity extends Activity {
         s.row.setOrientation(LinearLayout.HORIZONTAL);
         s.row.setClipChildren(false);
         s.row.setClipToPadding(false);
-        s.row.setPadding(Ui.dp(this, 6), Ui.dp(this, 14), Ui.dp(this, 6), Ui.dp(this, 14));
+        s.row.setPadding(Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16));
         s.scroll.addView(s.row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         col.addView(s.scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return s;
@@ -288,19 +343,19 @@ public class MainActivity extends Activity {
             final Apps.App fa = found;
             final String url = sc[2];
             if (fa != null) used.add(fa.pkg);
-            int col = Color.parseColor(sc[1]);
-            View t = Ui.tile(this, sc[0], col, fa != null ? fa.img : null, fa != null && fa.banner, 208, 117,
-                    new View.OnClickListener() {
+            View t = Ui.tile(this, sc[0], Color.parseColor(sc[1]), fa != null ? fa.img : null,
+                    fa != null && fa.banner, 208, 117, new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
                             if (fa != null) open(fa.launch);
                             else open(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
                         }
                     });
-            if (t instanceof FrameLayout && sc[0].equals("Kick")) {
-                for (int c = 0; c < ((FrameLayout) t).getChildCount(); c++) {
-                    View ch = ((FrameLayout) t).getChildAt(c);
-                    if (ch instanceof TextView) ((TextView) ch).setTextColor(0xFF0B1020);
+            if (sc[0].equals("Kick") && t instanceof FrameLayout) {
+                FrameLayout fl = (FrameLayout) t;
+                for (int c = 0; c < fl.getChildCount(); c++) {
+                    View ch = fl.getChildAt(c);
+                    if (ch instanceof TextView) ((TextView) ch).setTextColor(0xFF0A0F24);
                 }
             }
             secStream.row.addView(t);
@@ -308,7 +363,7 @@ public class MainActivity extends Activity {
         for (Apps.App a : apps) {
             if (used.contains(a.pkg)) continue;
             LinearLayout row = a.leanback ? secApps.row : secOther.row;
-            row.addView(Ui.tile(this, a.label, 0xFF1B2447, a.img, a.banner, 176, 99, launcher(a)));
+            row.addView(Ui.tile(this, a.label, Ui.SURFACE, a.img, a.banner, 176, 99, launcher(a)));
         }
         secStream.show(true);
         secApps.show(secApps.row.getChildCount() > 0);
@@ -328,13 +383,29 @@ public class MainActivity extends Activity {
         };
     }
 
+    private void play(int idx) {
+        prefs.edit().putInt("last", idx).apply();
+        startActivity(new Intent(this, PlayerActivity.class).putExtra("i", idx));
+    }
+
     private void fillTv() {
-        int fi = focusIdx(secTv.row);
+        int fh = focusIdx(secHero.row), fi = focusIdx(secTv.row);
+        secHero.row.removeAllViews();
         secTv.row.removeAllViews();
         List<Channels.Item> it = Channels.items;
+
+        // destaque: continuar assistindo + memória
+        if (!it.isEmpty()) {
+            int last = prefs.getInt("last", 0);
+            if (last < 0 || last >= it.size()) last = 0;
+            secHero.row.addView(heroCard(it.get(last), last));
+        }
+        secHero.row.addView(memoryCard());
+        updateRam();
+
         if (it.isEmpty()) {
             String msg = Channels.loading ? "Carregando canais..." : "Sem canais. Toque para tentar de novo";
-            secTv.row.addView(Ui.tile(this, msg, 0xFF1B2447, null, false, 208, 117, new View.OnClickListener() {
+            secTv.row.addView(Ui.tile(this, msg, Ui.SURFACE, null, false, 208, 117, new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     Channels.load(MainActivity.this, true, new Runnable() {
@@ -347,50 +418,137 @@ public class MainActivity extends Activity {
                 }
             }));
         } else {
-            int last = prefs.getInt("last", -1);
-            if (last >= 0 && last < it.size()) secTv.row.addView(channelTile(it.get(last), last, true));
-            for (int i = 0; i < it.size(); i++) secTv.row.addView(channelTile(it.get(i), i, false));
+            for (int i = 0; i < it.size(); i++) secTv.row.addView(channelTile(it.get(i), i));
         }
+        restore(secHero.row, fh);
         restore(secTv.row, fi);
         if (getCurrentFocus() == null) focusFirst();
     }
 
-    private View channelTile(Channels.Item c, final int idx, boolean cont) {
-        String name = c.name.replaceAll("\\s*[\\(\\[].*?[\\)\\]]", "").trim();
-        if (name.length() == 0) name = c.name;
+    private static String cleanName(String n) {
+        String s = n.replaceAll("\\s*[\\(\\[].*?[\\)\\]]", "").trim();
+        return s.length() == 0 ? n : s;
+    }
+
+    private static String initials(String n) {
+        String[] p = n.split("\\s+");
+        String s = p[0].substring(0, Math.min(2, p[0].length()));
+        if (p.length > 1 && p[1].length() > 0) s = p[0].substring(0, 1) + p[1].substring(0, 1);
+        return s.toUpperCase();
+    }
+
+    /** Painel claro com a logo (ou iniciais enquanto a imagem não chega). */
+    private FrameLayout logoPanel(Channels.Item c, int color, float initialsSp) {
+        FrameLayout panel = new FrameLayout(this);
+        panel.setBackgroundColor(Ui.PANEL);
+        TextView ini = Ui.text(this, initials(cleanName(c.name)), initialsSp, color, false, Gravity.CENTER);
+        ini.setTypeface(Ui.black());
+        panel.addView(ini, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ImageView iv = new ImageView(this);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int pad = Ui.dp(this, 14);
+        iv.setPadding(pad, pad, pad, pad);
+        panel.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        Logos.load(this, c.logo, iv, ini);
+        return panel;
+    }
+
+    private View heroCard(final Channels.Item c, final int idx) {
         int color = PALETTE[Math.abs(c.name.hashCode()) % PALETTE.length];
-        FrameLayout f = Ui.base(this, color, 208, 117, new View.OnClickListener() {
+        FrameLayout f = Ui.base(this, Ui.SURFACE2, 520, 150, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                prefs.edit().putInt("last", idx).apply();
-                startActivity(new Intent(MainActivity.this, PlayerActivity.class).putExtra("i", idx));
+                play(idx);
             }
         });
-        TextView tag = Ui.text(this, cont ? "CONTINUAR" : "● AO VIVO", 10, cont ? 0xFFFFE9A8 : 0xFFFFC9C9, true, Gravity.START);
-        tag.setLetterSpacing(0.1f);
-        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-        tp.leftMargin = Ui.dp(this, 12);
-        tp.topMargin = Ui.dp(this, 10);
-        f.addView(tag, tp);
-        TextView t = Ui.text(this, name, 17, 0xFFFFFFFF, true, Gravity.CENTER);
-        t.setMaxLines(2);
+        f.setTag(Integer.valueOf(color));
+        f.addView(logoPanel(c, color, 40), new FrameLayout.LayoutParams(Ui.dp(this, 190), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START));
+
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        txt.setGravity(Gravity.CENTER_VERTICAL);
+        txt.setPadding(Ui.dp(this, 22), Ui.dp(this, 16), Ui.dp(this, 18), Ui.dp(this, 16));
+        txt.addView(Ui.text(this, "Continuar assistindo", 15, Ui.MUTED, false, Gravity.START));
+        TextView name = Ui.text(this, cleanName(c.name), 28, Ui.TEXT, true, Gravity.START);
+        name.setMaxLines(2);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        np.topMargin = Ui.dp(this, 6);
+        txt.addView(name, np);
+        TextView live = Ui.text(this, "● Ao vivo", 15, Ui.LIVE, true, Gravity.START);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = Ui.dp(this, 10);
+        txt.addView(live, lp);
+        FrameLayout.LayoutParams tp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        tp.leftMargin = Ui.dp(this, 190);
+        f.addView(txt, tp);
+        return f;
+    }
+
+    private View memoryCard() {
+        FrameLayout f = Ui.base(this, Ui.SURFACE, 280, 150, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, TurboActivity.class));
+            }
+        });
+        f.setTag(Integer.valueOf(Ui.AMBER));
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setGravity(Gravity.CENTER_VERTICAL);
+        l.setPadding(Ui.dp(this, 22), Ui.dp(this, 16), Ui.dp(this, 22), Ui.dp(this, 16));
+        l.addView(Ui.text(this, "Memória do Stick", 15, Ui.MUTED, false, Gravity.START));
+        memPct = Ui.text(this, "", 34, Ui.TEXT, false, Gravity.START);
+        memPct.setTypeface(Ui.light());
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pp.topMargin = Ui.dp(this, 6);
+        l.addView(memPct, pp);
+        memBar = new Ui.Bar(this);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 8));
+        bp.topMargin = Ui.dp(this, 12);
+        l.addView(memBar, bp);
+        TextView hint = Ui.text(this, "Abrir o Turbo", 13, Ui.AMBER, true, Gravity.START);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hp.topMargin = Ui.dp(this, 10);
+        l.addView(hint, hp);
+        f.addView(l, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return f;
+    }
+
+    private View channelTile(Channels.Item c, final int idx) {
+        int color = PALETTE[Math.abs(c.name.hashCode()) % PALETTE.length];
+        FrameLayout f = Ui.base(this, Ui.SURFACE, 200, 124, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                play(idx);
+            }
+        });
+        f.setTag(Integer.valueOf(color));
+        f.addView(logoPanel(c, color, 28), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 80), Gravity.TOP));
+
+        SpannableStringBuilder sb = new SpannableStringBuilder("●  " + cleanName(c.name));
+        sb.setSpan(new ForegroundColorSpan(Ui.LIVE), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        TextView t = Ui.text(this, "", 14, Ui.TEXT, true, Gravity.CENTER_VERTICAL);
+        t.setText(sb);
+        t.setSingleLine(true);
         t.setEllipsize(TextUtils.TruncateAt.END);
-        t.setPadding(Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 6));
-        f.addView(t, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        t.setPadding(Ui.dp(this, 12), 0, Ui.dp(this, 12), 0);
+        f.addView(t, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 44), Gravity.BOTTOM));
         return f;
     }
 
     private void fillSystem() {
         LinearLayout r = secSys.row;
-        r.addView(Ui.tile(this, "Turbo", 0xFFFF6A00, null, false, 176, 99, new View.OnClickListener() {
+        r.addView(Ui.tile(this, "Turbo", Ui.AMBER, null, false, 176, 99, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, TurboActivity.class));
             }
         }));
-        r.addView(Ui.tile(this, "Configurações", 0xFF2A3566, null, false, 176, 99, intentClick(Settings.ACTION_SETTINGS)));
-        r.addView(Ui.tile(this, "Wi-Fi", 0xFF2A3566, null, false, 176, 99, intentClick(Settings.ACTION_WIFI_SETTINGS)));
-        r.addView(Ui.tile(this, "Atualizar canais", 0xFF2A3566, null, false, 176, 99, new View.OnClickListener() {
+        ((TextView) ((FrameLayout) r.getChildAt(0)).getChildAt(0)).setTextColor(0xFF0A0F24);
+        r.addView(Ui.tile(this, "Configurações", Ui.SURFACE2, null, false, 176, 99, intentClick(Settings.ACTION_SETTINGS)));
+        r.addView(Ui.tile(this, "Wi-Fi", Ui.SURFACE2, null, false, 176, 99, intentClick(Settings.ACTION_WIFI_SETTINGS)));
+        r.addView(Ui.tile(this, "Atualizar canais", Ui.SURFACE2, null, false, 176, 99, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Channels.load(MainActivity.this, true, new Runnable() {
@@ -435,7 +593,7 @@ public class MainActivity extends Activity {
     }
 
     private void focusFirst() {
-        Sec[] order = {secStream, secTv, secApps, secOther, secSys};
+        Sec[] order = {secHero, secStream, secTv, secApps, secOther, secSys};
         for (Sec s : order) {
             if (s.scroll.getVisibility() == View.VISIBLE && s.row.getChildCount() > 0) {
                 s.row.getChildAt(0).requestFocus();
@@ -445,11 +603,15 @@ public class MainActivity extends Activity {
     }
 
     private void updateRam() {
+        if (memPct == null || memBar == null) return;
         try {
             ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
             ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
             am.getMemoryInfo(mi);
-            ram.setText("RAM livre  " + (mi.availMem >> 20) + " MB");
+            float used = mi.totalMem > 0 ? 1f - (float) mi.availMem / mi.totalMem : 0f;
+            memPct.setText(Math.round(used * 100) + "% em uso");
+            memBar.frac = used;
+            memBar.invalidate();
         } catch (Throwable ignored) {
         }
     }

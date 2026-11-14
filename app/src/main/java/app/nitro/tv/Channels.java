@@ -11,22 +11,34 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Lista de TV aberta (M3U). Troque M3U_URL pela sua lista preferida. */
 final class Channels {
     private Channels() {}
 
     static final String M3U_URL = "https://iptv-org.github.io/iptv/countries/br.m3u";
-    static final int MAX = 60;
+    static final int MAX = 80;
+    private static final Pattern LOGO = Pattern.compile("tvg-logo=\"([^\"]*)\"");
+    // ordem de prioridade na tela (até 3 de cada)
+    private static final String[] PRIO = {"globo", "sbt", "record", "band", "redetv", "jovem pan", "cnn brasil",
+            "tv brasil", "cultura", "aparecida", "canal rural", "gazeta", "rede vida", "senado", "camara",
+            "justica", "novo tempo", "tv escola"};
     private static final long TTL = 12L * 60 * 60 * 1000;
 
     static final class Item {
         final String name;
         final String url;
-        Item(String n, String u) { name = n; url = u; }
+        final String logo;
+        int rank = 1000;
+        Item(String n, String u, String l) { name = n; url = u; logo = l; }
     }
 
     static volatile List<Item> items = Collections.emptyList();
@@ -90,22 +102,43 @@ final class Channels {
     }
 
     static List<Item> parse(String text) {
-        List<Item> out = new ArrayList<Item>();
-        String name = null;
+        List<Item> all = new ArrayList<Item>();
+        String name = null, logo = null;
         for (String raw : text.split("\n")) {
             String line = raw.trim();
             if (line.startsWith("#EXTINF")) {
                 int i = line.lastIndexOf(',');
                 name = i >= 0 ? line.substring(i + 1).trim() : "Canal";
                 if (name.length() == 0) name = "Canal";
+                Matcher m = LOGO.matcher(line);
+                logo = m.find() ? m.group(1) : null;
             } else if (line.length() > 0 && !line.startsWith("#")) {
                 if (name != null && (line.startsWith("http://") || line.startsWith("https://"))) {
-                    out.add(new Item(name, line));
-                    if (out.size() >= MAX) break;
+                    all.add(new Item(name, line, logo));
                 }
                 name = null;
+                logo = null;
             }
         }
-        return out;
+        int[] count = new int[PRIO.length];
+        for (Item it : all) {
+            String n = Normalizer.normalize(it.name, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
+            for (int k = 0; k < PRIO.length; k++) {
+                if (n.contains(PRIO[k])) {
+                    if (count[k] < 3) {
+                        count[k]++;
+                        it.rank = k;
+                    }
+                    break;
+                }
+            }
+        }
+        Collections.sort(all, new Comparator<Item>() {
+            @Override
+            public int compare(Item a, Item b) {
+                return a.rank - b.rank;
+            }
+        });
+        return all.size() > MAX ? new ArrayList<Item>(all.subList(0, MAX)) : all;
     }
 }

@@ -53,7 +53,12 @@ public class MainActivity extends Activity {
             {"tv.pluto.android", "Pluto TV", "#2B2B52"},
             {"com.crunchyroll.crunchyroid", "Crunchyroll", "#F47521"},
             {"com.plexapp.android", "Plex", "#E5A00D"},
-            {"tv.twitch.android.app", "Twitch", "#9146FF"},
+    };
+
+    // atalhos fixos: nome, cor, url (fallback), pacotes possíveis
+    private static final String[][] SHORTCUTS = {
+            {"Twitch", "#9146FF", "https://www.twitch.tv", "tv.twitch.android.app", "tv.twitch.android.viewer"},
+            {"Kick", "#53FC18", "https://kick.com", "com.kick.mobile", "com.kick.tv"},
     };
 
     private static final int[] PALETTE = {
@@ -277,12 +282,35 @@ public class MainActivity extends Activity {
             used.add(a.pkg);
             secStream.row.addView(Ui.tile(this, br[1], Color.parseColor(br[2]), a.img, a.banner, 208, 117, launcher(a)));
         }
+        for (String[] sc : SHORTCUTS) {
+            Apps.App found = null;
+            for (int k = 3; k < sc.length && found == null; k++) found = byPkg.get(sc[k]);
+            final Apps.App fa = found;
+            final String url = sc[2];
+            if (fa != null) used.add(fa.pkg);
+            int col = Color.parseColor(sc[1]);
+            View t = Ui.tile(this, sc[0], col, fa != null ? fa.img : null, fa != null && fa.banner, 208, 117,
+                    new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            if (fa != null) open(fa.launch);
+                            else open(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                        }
+                    });
+            if (t instanceof FrameLayout && sc[0].equals("Kick")) {
+                for (int c = 0; c < ((FrameLayout) t).getChildCount(); c++) {
+                    View ch = ((FrameLayout) t).getChildAt(c);
+                    if (ch instanceof TextView) ((TextView) ch).setTextColor(0xFF0B1020);
+                }
+            }
+            secStream.row.addView(t);
+        }
         for (Apps.App a : apps) {
             if (used.contains(a.pkg)) continue;
             LinearLayout row = a.leanback ? secApps.row : secOther.row;
             row.addView(Ui.tile(this, a.label, 0xFF1B2447, a.img, a.banner, 176, 99, launcher(a)));
         }
-        secStream.show(secStream.row.getChildCount() > 0);
+        secStream.show(true);
         secApps.show(secApps.row.getChildCount() > 0);
         secOther.show(secOther.row.getChildCount() > 0);
         restore(secStream.row, f1);

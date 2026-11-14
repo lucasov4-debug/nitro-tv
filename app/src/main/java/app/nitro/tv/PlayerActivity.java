@@ -150,7 +150,10 @@ public class PlayerActivity extends Activity {
         spin.setVisibility(View.VISIBLE);
         try {
             video.stopPlayback();
-            video.setVideoURI(Uri.parse(c.url));
+            java.util.HashMap<String, String> hd = new java.util.HashMap<String, String>();
+            if (c.ua.length() > 0) hd.put("User-Agent", c.ua);
+            if (c.ref.length() > 0) hd.put("Referer", c.ref);
+            video.setVideoURI(Uri.parse(c.url), hd);
         } catch (Throwable t) {
             fail();
             return;

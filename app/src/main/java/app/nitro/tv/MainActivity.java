@@ -93,6 +93,7 @@ public class MainActivity extends Activity {
     private Sec secHero, secStream, secTv, secApps, secOther, secSys;
     private List<Apps.App> apps;
     private boolean scanning;
+    private boolean updateAvail;
     private SharedPreferences prefs;
 
     private final Runnable rescanRun = new Runnable() {
@@ -118,6 +119,13 @@ public class MainActivity extends Activity {
         fillSystem();
         fillTv();
         rescan();
+        Updater.check(this, new Updater.Cb() {
+            @Override
+            public void done(boolean available) {
+                updateAvail = available;
+                if (available) fillTv();
+            }
+        });
         Channels.load(this, false, new Runnable() {
             @Override
             public void run() {
@@ -394,6 +402,17 @@ public class MainActivity extends Activity {
         secTv.row.removeAllViews();
         List<Channels.Item> it = Channels.items;
 
+        if (updateAvail) {
+            View u = Ui.tile(this, "Atualização disponível\nToque para instalar", Ui.AMBER, null, false, 200, 150, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    Updater.install(MainActivity.this);
+                }
+            });
+            ((TextView) ((FrameLayout) u).getChildAt(0)).setTextColor(0xFF0A0F24);
+            secHero.row.addView(u);
+        }
+
         // destaque: continuar assistindo + memória
         if (!it.isEmpty()) {
             int last = prefs.getInt("last", 0);
@@ -548,6 +567,20 @@ public class MainActivity extends Activity {
         ((TextView) ((FrameLayout) r.getChildAt(0)).getChildAt(0)).setTextColor(0xFF0A0F24);
         r.addView(Ui.tile(this, "Configurações", Ui.SURFACE2, null, false, 176, 99, intentClick(Settings.ACTION_SETTINGS)));
         r.addView(Ui.tile(this, "Wi-Fi", Ui.SURFACE2, null, false, 176, 99, intentClick(Settings.ACTION_WIFI_SETTINGS)));
+        r.addView(Ui.tile(this, "Buscar atualização", Ui.SURFACE2, null, false, 176, 99, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Toast.makeText(MainActivity.this, "Verificando...", Toast.LENGTH_SHORT).show();
+                Updater.check(MainActivity.this, new Updater.Cb() {
+                    @Override
+                    public void done(boolean available) {
+                        updateAvail = available;
+                        Toast.makeText(MainActivity.this, available ? "Atualização disponível" : "Você já está na versão mais recente", Toast.LENGTH_LONG).show();
+                        fillTv();
+                    }
+                });
+            }
+        }));
         r.addView(Ui.tile(this, "Atualizar canais", Ui.SURFACE2, null, false, 176, 99, new View.OnClickListener() {
             @Override
             public void onClick(View v) {

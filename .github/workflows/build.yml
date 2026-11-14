@@ -26,6 +26,10 @@ jobs:
       - name: Build release APK
         run: gradle assembleRelease --no-daemon
 
+      - name: Ler versionCode
+        id: v
+        run: echo "code=$(grep -oP 'versionCode \K[0-9]+' app/build.gradle)" >> "$GITHUB_OUTPUT"
+
       - name: Renomear APK
         run: cp app/build/outputs/apk/release/app-release.apk nitro.apk
 
@@ -40,4 +44,5 @@ jobs:
         with:
           tag_name: latest
           name: Nitro (última versão)
+          body: "versionCode=${{ steps.v.outputs.code }}"
           files: nitro.apk

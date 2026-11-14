@@ -10,8 +10,17 @@ android {
         applicationId 'app.nitro.tv'
         minSdk 21
         targetSdk 34
-        versionCode 3
-        versionName "1.2"
+        versionCode 4
+        versionName "1.3"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('nitro.keystore')
+            storePassword 'nitro123'
+            keyAlias 'nitro'
+            keyPassword 'nitro123'
+        }
     }
 
     buildTypes {
@@ -19,7 +28,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
 

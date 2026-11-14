@@ -53,13 +53,32 @@ final class Ui {
         GradientDrawable on = new GradientDrawable();
         on.setColor(fill);
         on.setCornerRadius(radiusPx);
-        on.setStroke(dp(c, 4), AMBER);
         GradientDrawable off = new GradientDrawable();
         off.setColor(fill);
         off.setCornerRadius(radiusPx);
         StateListDrawable s = new StateListDrawable();
         s.addState(new int[]{android.R.attr.state_focused}, on);
         s.addState(new int[]{}, off);
+        return s;
+    }
+
+    /** Anel de foco por cima de tudo (aparece até em tiles com banner). */
+    static Drawable ringFg(Context c, float radiusPx) {
+        GradientDrawable focus = new GradientDrawable();
+        focus.setColor(0x00000000);
+        focus.setCornerRadius(radiusPx);
+        focus.setStroke(dp(c, 6), AMBER);
+        GradientDrawable press = new GradientDrawable();
+        press.setColor(0x40FFFFFF);
+        press.setCornerRadius(radiusPx);
+        press.setStroke(dp(c, 6), 0xFFFFFFFF);
+        GradientDrawable none = new GradientDrawable();
+        none.setColor(0x00000000);
+        none.setCornerRadius(radiusPx);
+        StateListDrawable s = new StateListDrawable();
+        s.addState(new int[]{android.R.attr.state_pressed}, press);
+        s.addState(new int[]{android.R.attr.state_focused}, focus);
+        s.addState(new int[]{}, none);
         return s;
     }
 
@@ -100,6 +119,7 @@ final class Ui {
         f.setLayoutParams(lp);
         float r = dp(c, 16);
         f.setBackground(tileBg(c, color, r));
+        f.setForeground(ringFg(c, r));
         roundClip(f, r);
         f.setFocusable(true);
         f.setTag(Integer.valueOf(color));
